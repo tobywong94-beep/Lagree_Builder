@@ -1,5 +1,5 @@
 // PWA with careful caching: index, manifest, icons are cached; app.js is network-first (cached as fallback).
-const CACHE = 'lagree-pages-min-v1';
+const CACHE = 'lagree-pages-min-v2';
 const PRECACHE = [
   './',
   './index.html',
