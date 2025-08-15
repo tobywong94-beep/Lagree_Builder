@@ -32,10 +32,10 @@
       <h1 style="margin:0 0 6px 0; font-size:18px">Lagree Library</h1>
       <div style="color:#9aa4b2; font-size:12px">Build, time, and print your routines. Autosaves offline.</div>
       <div style="height:8px"></div>
+
       <button class="btn" id="newRoutineBtn">＋ New</button>
       <button class="btn secondary" id="exportBtn">Export</button>
-      <label class="btn secondary" for="importInput">Import</label>
-      <input id="importInput" type="file" accept="application/json" style="display:none"/>
+
       <div style="height:8px"></div>
       <input id="search" type="text" placeholder="Search…"/>
       <div style="display:flex; gap:8px; margin-top:8px">
@@ -45,9 +45,11 @@
       <div style="height:8px"></div>
       <div id="routineList"></div>
     </aside>
+
     <main class="content">
       <div id="crumbs" style="color:#9aa4b2; font-size:12px">No routine selected</div>
       <div style="height:8px"></div>
+
       <div id="editor" class="panel" style="display:none">
         <div style="display:grid; gap:10px">
           <input id="titleInput" type="text" placeholder="Title (e.g., 40-min Signature: LL → LO → RL → RO → Arms → Core)"/>
@@ -55,7 +57,9 @@
             <select id="categoryInput"><option>Signature</option><option>Advanced</option><option>Flex</option><option>Beginner</option></select>
             <input id="tagsInput" type="text" placeholder="tags, comma-separated"/>
           </div>
+
           <div id="blocksContainer" style="display:grid; gap:10px"></div>
+
           <div style="display:flex; gap:8px; flex-wrap:wrap">
             <span style="background:#0d1826; border:1px solid #1f2630; padding:8px 10px; border-radius:999px; font-weight:800">Routine: <span id="totalTime">00:00</span></span>
             <span style="background:#0d1826; border:1px solid #1f2630; padding:8px 10px; border-radius:999px; font-weight:800">Moves: <span id="totalMoves">0</span></span>
@@ -63,6 +67,7 @@
           </div>
         </div>
       </div>
+
       <div id="emptyState" class="panel">
         <b>Create a routine to get started.</b>
         <div style="color:#9aa4b2; font-size:12px">Pick the category and number of blocks, then add timed moves. Totals update live.</div>
@@ -72,7 +77,7 @@
     </main>
   </div>
 
-  <!-- New Routine Drawer (simple) -->
+  <!-- New Routine Drawer -->
   <div id="newModal" style="display:none; position:fixed; left:0; right:0; bottom:0; background:rgba(10,14,20,.97); border-top:1px solid #1f2630; padding:12px;">
     <div class="panel" style="max-width:720px; margin:0 auto;">
       <h2 style="margin:0 0 8px 0">New Routine</h2>
@@ -91,9 +96,9 @@
   </div>
 
   <script>
-    // Register SW; it avoids caching app.js too aggressively
     if ('serviceWorker' in navigator) { navigator.serviceWorker.register('sw.js'); }
   </script>
-  <script defer src="app.js?v=1755228459"></script>
+  <!-- bump the version string when you change app.js -->
+  <script defer src="app.js?v=2025-08-14-2"></script>
 </body>
 </html>
