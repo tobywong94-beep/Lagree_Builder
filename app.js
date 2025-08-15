@@ -1,4 +1,4 @@
-// app.js — simplified (no import), hardened "New" flow
+// app.js — Duplicate, Delete, Last-taught, robust modal overlay, no Import
 document.addEventListener('DOMContentLoaded', () => {
   const $ = (s)=>document.querySelector(s);
   const $$ = (s)=>Array.from(document.querySelectorAll(s));
@@ -19,21 +19,23 @@ document.addEventListener('DOMContentLoaded', () => {
   }
   function fmt(sec){ sec=Math.max(0,Math.floor(sec||0)); const m=Math.floor(sec/60), s=sec%60; return String(m).padStart(2,'0')+':'+String(s).padStart(2,'0'); }
   function escapeHtml(str){return String(str||'').replace(/[&<>"']/g,s=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s]));}
+  const toYMD = (isoOrYmd) => { if (!isoOrYmd) return ''; return isoOrYmd.length >= 10 ? isoOrYmd.slice(0,10) : ''; };
 
   let routines = loadAll();
   let currentId = null;
 
   const totalTime = (r)=> (r.blocks||[]).reduce((acc,b)=> acc + (b.moves||[]).reduce((a,m)=> a + (m.seconds||0), 0), 0);
   const totalMovesCount = (r)=> (r.blocks||[]).reduce((acc,b)=> acc + (b.moves?.length||0), 0);
+  const blockTotal = (b)=> (b.moves||[]).reduce((acc,m)=> acc + (m.seconds||0), 0);
 
   function renderList(){
-    const q = $('#search').value.trim().toLowerCase();
-    const cat = $('#filterCategory').value;
-    const sort = $('#sortOrder').value;
+    const q = $('#search')?.value.trim().toLowerCase() || '';
+    const cat = $('#filterCategory')?.value || '';
+    const sort = $('#sortOrder')?.value || 'updated';
     let items = [...routines];
     if(q){
       items = items.filter(r=>{
-        const hay = [r.title, r.category, (r.tags||[]).join(','), JSON.stringify(r.blocks), r.notes||''].join(' ').toLowerCase();
+        const hay = [r.title, r.category, (r.tags||[]).join(','), JSON.stringify(r.blocks), r.notes||'', r.lastTaught||''].join(' ').toLowerCase();
         return hay.includes(q);
       });
     }
@@ -47,6 +49,7 @@ document.addEventListener('DOMContentLoaded', () => {
     });
 
     const root = $('#routineList');
+    if (!root) return;
     root.innerHTML = '';
     if(!items.length){ root.innerHTML = '<div style="color:#9aa4b2; font-size:12px">No routines found.</div>'; return; }
     for(const r of items){
@@ -61,6 +64,7 @@ document.addEventListener('DOMContentLoaded', () => {
         </div>
         <div style="color:#9aa4b2; font-size:12px">⏱ ${fmt(total)} • 🧱 ${(r.blocks?.length||0)} blocks</div>
         <div style="color:#9aa4b2; font-size:11px">Updated ${new Date(r.updatedAt||r.createdAt).toLocaleString()}</div>
+        ${r.lastTaught ? `<div style="color:#9aa4b2; font-size:11px">Last taught ${r.lastTaught}</div>` : ``}
       `;
       card.addEventListener('click', ()=> openRoutine(r.id));
       root.appendChild(card);
@@ -77,6 +81,7 @@ document.addEventListener('DOMContentLoaded', () => {
     $('#titleInput').value = r.title || '';
     $('#categoryInput').value = r.category || 'Signature';
     $('#tagsInput').value = (r.tags||[]).join(', ');
+    const lastEl = $('#lastTaughtInput'); if (lastEl) lastEl.value = toYMD(r.lastTaught);
     renderBlocks(r);
     updateTotals(r);
     renderList();
@@ -84,6 +89,7 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function renderBlocks(r){
     const root = $('#blocksContainer');
+    if (!root) return;
     root.innerHTML = '';
     (r.blocks||[]).forEach((b, idx)=>{
       const blockEl = document.createElement('div');
@@ -168,7 +174,6 @@ document.addEventListener('DOMContentLoaded', () => {
     return row;
   }
 
-  const blockTotal = (b)=> (b.moves||[]).reduce((acc,m)=> acc + (m.seconds||0), 0);
   function updateTotals(r){
     $('#totalTime').textContent = fmt(totalTime(r));
     $('#totalMoves').textContent = totalMovesCount(r);
@@ -193,41 +198,40 @@ document.addEventListener('DOMContentLoaded', () => {
       container.appendChild(inp);
     }
   }
-function openNewModal(){
-  const modal = document.getElementById('newModal');
-  const backdrop = document.getElementById('modalBackdrop');
-  if (!modal) { createRoutineImmediately(); return; }  // fallback
-
-  document.getElementById('newCategory').value = 'Signature';
-  const countEl = document.getElementById('newBlockCount');
-  if (countEl) countEl.value = 6;
-  renderNewBlockNameInputs(6);
-
-  modal.style.display = 'block';
-  if (backdrop) backdrop.style.display = 'block';
-  document.body.classList.add('modal-open');   // lock scroll
-}
-
-function closeNewModal(){
-  const modal = document.getElementById('newModal');
-  const backdrop = document.getElementById('modalBackdrop');
-  if (modal) modal.style.display = 'none';
-  if (backdrop) backdrop.style.display = 'none';
-  document.body.classList.remove('modal-open'); // unlock scroll
-}
-
-
   function createRoutineImmediately() {
-    // Fallback: make a 6-block Signature routine instantly if the modal isn't available
     const blocks = ['Left Leg','Left Oblique','Right Leg','Right Oblique','Arms','Core'].map(n=>({ id: uid(), name:n, moves:[] }));
-    const r = { id: uid(), title: `Signature routine`, category: 'Signature', tags: [], blocks, createdAt: now(), updatedAt: now() };
+    const r = { id: uid(), title: `Signature routine`, category: 'Signature', tags: [], lastTaught: null, blocks, createdAt: now(), updatedAt: now() };
     routines.unshift(r); persist(); openRoutine(r.id);
   }
 
-  // Wire UI safely
+  function openNewModal(){
+    const root = $('#modalRoot');
+    const panel = $('#newModal');
+    if (!root || !panel) { createRoutineImmediately(); return; }
+    const cat = $('#newCategory');
+    const count = $('#newBlockCount');
+    if (cat) cat.value = 'Signature';
+    if (count) count.value = 6;
+    renderNewBlockNameInputs(6);
+
+    root.classList.remove('hidden');
+    root.setAttribute('aria-hidden', 'false');
+    document.body.classList.add('modal-open');
+    setTimeout(() => cat?.focus(), 0);
+  }
+  function closeNewModal(){
+    const root = $('#modalRoot');
+    if (root) { root.classList.add('hidden'); root.setAttribute('aria-hidden', 'true'); }
+    document.body.classList.remove('modal-open');
+  }
+
+  // Wire UI: New / Duplicate / Delete
   $('#newRoutineBtn')?.addEventListener('click', openNewModal);
   $('#emptyNewBtn')?.addEventListener('click', openNewModal);
   $('#cancelNew')?.addEventListener('click', closeNewModal);
+  $('#modalBackdrop')?.addEventListener('click', closeNewModal);
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeNewModal(); });
+
   $('#newBlockCount')?.addEventListener('input', e=>{
     let n = parseInt(e.target.value||'1',10);
     n = Math.max(1, Math.min(12, n));
@@ -238,14 +242,51 @@ function closeNewModal(){
     if (!catEl || names.length===0) { createRoutineImmediately(); return; }
     const cat = catEl.value || 'Signature';
     const blocks = names.map(inp=> ({ id: uid(), name: (inp.value||'Block').trim(), moves: [] }));
-    const r = { id: uid(), title: `${cat} routine`, category: cat, tags: [], blocks, createdAt: now(), updatedAt: now() };
+    const r = { id: uid(), title: `${cat} routine`, category: cat, tags: [], lastTaught: null, blocks, createdAt: now(), updatedAt: now() };
     routines.unshift(r); persist(); closeNewModal(); openRoutine(r.id); $('#titleInput')?.focus();
   });
 
+  // Duplicate
+  $('#duplicateBtn')?.addEventListener('click', () => {
+    const src = routines.find(x => x.id === currentId);
+    if (!src) return;
+    const copy = JSON.parse(JSON.stringify(src));
+    copy.id = uid();
+    copy.title = (src.title || 'Routine') + ' (copy)';
+    copy.createdAt = now();
+    copy.updatedAt = now();
+    // Keep or clear lastTaught; uncomment next line to clear on copy:
+    // copy.lastTaught = null;
+    routines.unshift(copy);
+    persist();
+    openRoutine(copy.id);
+  });
+
+  // Delete
+  $('#deleteBtn')?.addEventListener('click', () => {
+    if (!currentId) return;
+    if (!confirm('Delete this routine?')) return;
+    routines = routines.filter(x => x.id !== currentId);
+    saveAll(routines);
+    currentId = null;
+    $('#editor').style.display = 'none';
+    $('#emptyState').style.display = 'block';
+    $('#crumbs').textContent = 'No routine selected';
+    renderList();
+  });
+
+  // Editor bindings
   $('#titleInput')?.addEventListener('input', e=>{ const r = routines.find(x=> x.id===currentId); if(r){ r.title = e.target.value; touch(r); persist(); updateTotals(r); } });
   $('#categoryInput')?.addEventListener('change', e=>{ const r = routines.find(x=> x.id===currentId); if(r){ r.category = e.target.value; touch(r); persist(); updateTotals(r); } });
   $('#tagsInput')?.addEventListener('input', e=>{ const r = routines.find(x=> x.id===currentId); if(r){ r.tags = e.target.value.split(',').map(s=>s.trim()).filter(Boolean); touch(r); persist(); renderList(); } });
+  $('#lastTaughtInput')?.addEventListener('change', e => {
+    const r = routines.find(x => x.id === currentId);
+    if (!r) return;
+    r.lastTaught = e.target.value || null;
+    touch(r); persist(); renderList();
+  });
 
+  // Export only
   $('#exportBtn')?.addEventListener('click', ()=>{
     const data = JSON.stringify(routines, null, 2);
     const blob = new Blob([data], {type:'application/json'});
@@ -254,6 +295,7 @@ function closeNewModal(){
     setTimeout(()=>URL.revokeObjectURL(url), 1000);
   });
 
+  // Filters
   $('#search')?.addEventListener('input', renderList);
   $('#filterCategory')?.addEventListener('change', renderList);
   $('#sortOrder')?.addEventListener('change', renderList);
