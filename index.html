@@ -1,268 +1,141 @@
-// app.js — no Import, robust modal overlay
-document.addEventListener('DOMContentLoaded', () => {
-  const $ = (s)=>document.querySelector(s);
-  const $$ = (s)=>Array.from(document.querySelectorAll(s));
-  const uid = ()=>Math.random().toString(36).slice(2,10);
-  const now = ()=>new Date().toISOString();
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover"/>
+  <title>Lagree Routine Builder</title>
 
-  const KEY = 'lagree.routines.v1';
-  const loadAll = ()=>{ try { return JSON.parse(localStorage.getItem(KEY)) || []; } catch { return []; } };
-  const saveAll = (list)=> localStorage.setItem(KEY, JSON.stringify(list));
+  <!-- PWA / iOS -->
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Lagree Builder">
+  <link rel="apple-touch-icon" href="apple-touch-icon-180.png">
+  <link rel="manifest" href="manifest.webmanifest">
+  <meta name="theme-color" content="#0b0d10">
 
-  function parseTimeInput(val){
-    if(!val) return 0;
-    val = String(val).trim();
-    if(/^\d+$/.test(val)) return parseInt(val,10);
-    const parts = val.split(':');
-    if(parts.length===2){ const m = parseInt(parts[0],10)||0, s=parseInt(parts[1],10)||0; return m*60+s; }
-    const n = parseInt(val,10); return isNaN(n)?0:n;
-  }
-  function fmt(sec){ sec=Math.max(0,Math.floor(sec||0)); const m=Math.floor(sec/60), s=sec%60; return String(m).padStart(2,'0')+':'+String(s).padStart(2,'0'); }
-  function escapeHtml(str){return String(str||'').replace(/[&<>"']/g,s=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[s]));}
+  <style>
+    html, body { height: 100%; }
+    body { margin: 0; font-family: ui-sans-serif, system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial; background:#0b0d10; color:#e6edf3; }
+    .app { min-height: 100vh; display: grid; grid-template-columns: 1fr; }
+    .sidebar { position: sticky; top:0; z-index:1; border-bottom:1px solid #1f2630; background:rgba(18,22,28,0.9); backdrop-filter: blur(6px); padding:12px; }
+    .content { padding:12px; }
+    .btn { display:inline-flex; align-items:center; gap:8px; min-height:44px; padding:10px 12px; background:#7aa2ff; color:#081120; border-radius:10px; border:0; font-weight:800; cursor:pointer; -webkit-tap-highlight-color: transparent; }
+    .btn.secondary { background:#1b2534; color:#e6edf3; border:1px solid #1f2630; }
+    .btn.danger { background:#ff7a7a; color:#1a0e0e; }
+    input, select, textarea { width:100%; min-height:44px; padding:12px; border-radius:10px; border:1px solid #1f2630; background:#0f1319; color:#e6edf3; }
+    .panel { background:#12161c; border:1px solid #1f2630; border-radius:12px; padding:12px; }
+    @media (min-width: 900px) { .app { grid-template-columns: 320px 1fr; } .sidebar{ height:100vh; border-right:1px solid #1f2630; border-bottom:0; } }
 
-  let routines = loadAll();
-  let currentId = null;
-
-  const totalTime = (r)=> (r.blocks||[]).reduce((acc,b)=> acc + (b.moves||[]).reduce((a,m)=> a + (m.seconds||0), 0), 0);
-  const totalMovesCount = (r)=> (r.blocks||[]).reduce((acc,b)=> acc + (b.moves?.length||0), 0);
-
-  function renderList(){
-    const q = $('#search')?.value.trim().toLowerCase() || '';
-    const cat = $('#filterCategory')?.value || '';
-    const sort = $('#sortOrder')?.value || 'updated';
-    let items = [...routines];
-    if(q){
-      items = items.filter(r=>{
-        const hay = [r.title, r.category, (r.tags||[]).join(','), JSON.stringify(r.blocks), r.notes||''].join(' ').toLowerCase();
-        return hay.includes(q);
-      });
+    /* === Robust modal overlay === */
+    .modal-root { position: fixed; inset: 0; z-index: 10000; }
+    .modal-root.hidden { display: none; }
+    .modal-backdrop { position: absolute; inset: 0; background: rgba(0,0,0,0.5); }
+    .modal-panel {
+      position: absolute; left: 0; right: 0; bottom: 0;
+      max-height: 90vh; overflow: auto;
+      background: rgba(10,14,20,.97);
+      border-top: 1px solid #1f2630; padding: 12px;
     }
-    if(cat) items = items.filter(r=> r.category===cat);
+    body.modal-open { overflow: hidden; height: 100%; }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar">
+      <h1 style="margin:0 0 6px 0; font-size:18px">Lagree Library</h1>
+      <div style="color:#9aa4b2; font-size:12px">Build, time, and print your routines. Autosaves offline.</div>
+      <div style="height:8px"></div>
 
-    items.sort((a,b)=>{
-      if(sort==='updated') return (b.updatedAt||b.createdAt).localeCompare(a.updatedAt||a.createdAt);
-      if(sort==='created') return b.createdAt.localeCompare(a.createdAt);
-      if(sort==='title') return (a.title||'').localeCompare(b.title||'');
-      return 0;
-    });
+      <div style="display:flex; gap:8px; flex-wrap:wrap">
+        <button class="btn" id="newRoutineBtn">＋ New</button>
+        <button class="btn secondary" id="exportBtn">Export</button>
+      </div>
 
-    const root = $('#routineList');
-    if (!root) return;
-    root.innerHTML = '';
-    if(!items.length){ root.innerHTML = '<div style="color:#9aa4b2; font-size:12px">No routines found.</div>'; return; }
-    for(const r of items){
-      const total = totalTime(r);
-      const card = document.createElement('div');
-      card.className = 'panel';
-      card.style.cursor = 'pointer';
-      card.innerHTML = `
-        <div style="display:flex; justify-content:space-between; gap:8px">
-          <div style="font-weight:800">${escapeHtml(r.title||'(untitled)')}</div>
-          <span style="background:#1a2230; border:1px solid #1f2630; padding:4px 8px; border-radius:999px; font-size:12px">${escapeHtml(r.category||'')}</span>
+      <div style="height:8px"></div>
+      <input id="search" type="text" placeholder="Search…"/>
+      <div style="display:flex; gap:8px; margin-top:8px">
+        <select id="filterCategory"><option value="">All</option><option>Signature</option><option>Advanced</option><option>Flex</option><option>Beginner</option></select>
+        <select id="sortOrder"><option value="updated">Updated</option><option value="created">Created</option><option value="title">Title</option></select>
+      </div>
+      <div style="height:8px"></div>
+      <div id="routineList"></div>
+    </aside>
+
+    <main class="content">
+      <div id="crumbs" style="color:#9aa4b2; font-size:12px">No routine selected</div>
+      <div style="height:8px"></div>
+
+      <!-- Toolbar: Duplicate + Delete -->
+      <div style="display:flex; justify-content:flex-end; gap:8px; margin-bottom:8px">
+        <button class="btn secondary" id="duplicateBtn">Duplicate</button>
+        <button class="btn danger" id="deleteBtn">Delete</button>
+      </div>
+
+      <div id="editor" class="panel" style="display:none">
+        <div style="display:grid; gap:10px">
+          <input id="titleInput" type="text" placeholder="Title (e.g., 40-min Signature: LL → LO → RL → RO → Arms → Core)"/>
+          <div style="display:flex; gap:10px">
+            <select id="categoryInput"><option>Signature</option><option>Advanced</option><option>Flex</option><option>Beginner</option></select>
+            <input id="tagsInput" type="text" placeholder="tags, comma-separated"/>
+          </div>
+
+          <!-- Last taught date -->
+          <div style="display:flex; gap:10px">
+            <div style="flex:1">
+              <div style="color:#9aa4b2; font-size:12px">Last taught</div>
+              <input id="lastTaughtInput" type="date"/>
+            </div>
+            <div style="flex:1"></div>
+          </div>
+
+          <div id="blocksContainer" style="display:grid; gap:10px"></div>
+
+          <div style="display:flex; gap:8px; flex-wrap:wrap">
+            <span style="background:#0d1826; border:1px solid #1f2630; padding:8px 10px; border-radius:999px; font-weight:800">Routine: <span id="totalTime">00:00</span></span>
+            <span style="background:#0d1826; border:1px solid #1f2630; padding:8px 10px; border-radius:999px; font-weight:800">Moves: <span id="totalMoves">0</span></span>
+            <span style="background:#0d1826; border:1px solid #1f2630; padding:8px 10px; border-radius:999px; font-weight:800">Blocks: <span id="totalBlocks">0</span></span>
+          </div>
         </div>
-        <div style="color:#9aa4b2; font-size:12px">⏱ ${fmt(total)} • 🧱 ${(r.blocks?.length||0)} blocks</div>
-        <div style="color:#9aa4b2; font-size:11px">Updated ${new Date(r.updatedAt||r.createdAt).toLocaleString()}</div>
-      `;
-      card.addEventListener('click', ()=> openRoutine(r.id));
-      root.appendChild(card);
-    }
-  }
+      </div>
 
-  function openRoutine(id){
-    currentId = id;
-    const r = routines.find(x=> x.id===id);
-    if(!r) return;
-    $('#emptyState').style.display = 'none';
-    $('#editor').style.display = 'block';
-    $('#crumbs').textContent = (r.title ? `${r.title} • ${r.category}` : `(untitled) • ${r.category}`);
-    $('#titleInput').value = r.title || '';
-    $('#categoryInput').value = r.category || 'Signature';
-    $('#tagsInput').value = (r.tags||[]).join(', ');
-    renderBlocks(r);
-    updateTotals(r);
-    renderList();
-  }
+      <div id="emptyState" class="panel">
+        <b>Create a routine to get started.</b>
+        <div style="color:#9aa4b2; font-size:12px">Pick the category and number of blocks, then add timed moves. Totals update live.</div>
+        <div style="height:8px"></div>
+        <button class="btn" id="emptyNewBtn">＋ New routine</button>
+      </div>
+    </main>
+  </div>
 
-  function renderBlocks(r){
-    const root = $('#blocksContainer');
-    if (!root) return;
-    root.innerHTML = '';
-    (r.blocks||[]).forEach((b, idx)=>{
-      const blockEl = document.createElement('div');
-      blockEl.className = 'panel';
-      blockEl.innerHTML = `
-        <div style="display:flex; gap:8px; align-items:center; margin-bottom:6px">
-          <input data-block="name" data-bid="${b.id}" type="text" value="${escapeHtml(b.name||`Block ${idx+1}`)}"/>
-          <span style="margin-left:auto; background:#0d1826; border:1px solid #1f2630; padding:6px 8px; border-radius:999px; font-weight:800">⏱ <span data-block-total="${b.id}">${fmt(blockTotal(b))}</span></span>
-          <button class="btn secondary" data-add-move="${b.id}">＋ Move</button>
-          <button class="btn secondary" data-del-block="${b.id}">Remove</button>
+  <!-- New Routine Modal (robust overlay) -->
+  <div id="modalRoot" class="modal-root hidden" aria-hidden="true">
+    <div id="modalBackdrop" class="modal-backdrop"></div>
+
+    <div id="newModal" class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="newModalTitle">
+      <div class="panel" style="max-width:720px; margin:0 auto;">
+        <h2 id="newModalTitle" style="margin:0 0 8px 0">New Routine</h2>
+        <div style="color:#9aa4b2; font-size:12px">Choose routine type, # blocks, and names.</div>
+
+        <div style="display:flex; gap:10px; margin-top:10px">
+          <select id="newCategory"><option>Signature</option><option>Advanced</option><option>Flex</option><option>Beginner</option></select>
+          <input id="newBlockCount" type="number" min="1" max="12" value="6"/>
         </div>
-        <div id="tbody-${b.id}"></div>
-      `;
-      root.appendChild(blockEl);
-      const tb = blockEl.querySelector('#tbody-'+b.id);
-      (b.moves||[]).forEach(m=> tb.appendChild(renderMoveRow(r,b,m)));
-    });
 
-    root.querySelectorAll('input[data-block="name"]').forEach(inp=>{
-      inp.addEventListener('input', e=>{
-        const bid = e.target.getAttribute('data-bid');
-        const blk = r.blocks.find(x=> x.id===bid);
-        if(blk){ blk.name = e.target.value; touch(r); persist(); }
-      });
-    });
-    root.querySelectorAll('button[data-add-move]').forEach(btn=>{
-      btn.addEventListener('click', e=>{
-        const bid = e.target.getAttribute('data-add-move');
-        const blk = r.blocks.find(x=> x.id===bid);
-        if(!blk.moves) blk.moves = [];
-        blk.moves.push({ id: uid(), name:'', seconds:0, variations:'', modifications:'', notes:'' });
-        touch(r); persist(); renderBlocks(r); updateTotals(r);
-      });
-    });
-    root.querySelectorAll('button[data-del-block]').forEach(btn=>{
-      btn.addEventListener('click', e=>{
-        const bid = e.target.getAttribute('data-del-block');
-        r.blocks = r.blocks.filter(x=> x.id!==bid);
-        touch(r); persist(); renderBlocks(r); updateTotals(r);
-      });
-    });
-  }
+        <div style="margin-top:10px; font-weight:800">Block Names</div>
+        <div id="newBlockNames" style="display:grid; gap:8px"></div>
 
-  function renderMoveRow(r,b,m){
-    const row = document.createElement('div');
-    row.style.display = 'grid';
-    row.style.gridTemplateColumns = 'minmax(160px,1fr) 120px 1fr 1fr auto';
-    row.style.gap = '8px';
-    row.style.margin = '6px 0';
-    row.innerHTML = `
-      <input data-move="name" data-mid="${m.id}" type="text" placeholder="Move name" value="${escapeHtml(m.name||'')}"/>
-      <input data-move="time" data-mid="${m.id}" type="text" placeholder="MM:SS or SS" value="${m.seconds?fmt(m.seconds):''}" inputmode="numeric"/>
-      <input data-move="variations" data-mid="${m.id}" type="text" placeholder="variations (comma)" value="${escapeHtml(m.variations||'')}"/>
-      <input data-move="modifications" data-mid="${m.id}" type="text" placeholder="modifications (comma)" value="${escapeHtml(m.modifications||'')}"/>
-      <button class="btn secondary" data-del-move="${m.id}">✕</button>
-    `;
-    row.querySelectorAll('input[data-move]').forEach(inp=>{
-      inp.addEventListener('input', e=>{
-        const mid = e.target.getAttribute('data-mid');
-        const field = e.target.getAttribute('data-move');
-        const mv = (b.moves||[]).find(x=> x.id===mid);
-        if(mv){
-          if(field==='time'){
-            mv.seconds = parseTimeInput(e.target.value);
-            document.querySelector(`[data-block-total="${b.id}"]`).textContent = fmt(blockTotal(b));
-            updateTotals(r);
-          } else {
-            mv[field] = e.target.value;
-          }
-          touch(r); persist();
-        }
-      });
-    });
-    row.querySelector('button[data-del-move]').addEventListener('click', ()=>{
-      b.moves = (b.moves||[]).filter(x=> x.id!==m.id);
-      touch(r); persist();
-      const tb = document.querySelector('#tbody-'+b.id);
-      tb.innerHTML = ''; (b.moves||[]).forEach(m2=> tb.appendChild(renderMoveRow(r,b,m2)));
-      document.querySelector(`[data-block-total="${b.id}"]`).textContent = fmt(blockTotal(b));
-      updateTotals(r);
-    });
-    return row;
-  }
+        <div style="display:flex; gap:8px; justify-content:flex-end; margin-top:10px">
+          <button class="btn secondary" id="cancelNew" type="button">Cancel</button>
+          <button class="btn" id="createNew" type="button">Create</button>
+        </div>
+      </div>
+    </div>
+  </div>
 
-  const blockTotal = (b)=> (b.moves||[]).reduce((acc,m)=> acc + (m.seconds||0), 0);
-  function updateTotals(r){
-    $('#totalTime').textContent = fmt(totalTime(r));
-    $('#totalMoves').textContent = totalMovesCount(r);
-    $('#totalBlocks').textContent = r.blocks?.length || 0;
-    $('#crumbs').textContent = r.title ? `${r.title} • ${r.category} • ⏱ ${fmt(totalTime(r))}` : `(untitled) • ${r.category} • ⏱ ${fmt(totalTime(r))}`;
-  }
-  function persist(){ saveAll(routines); renderList(); }
-  function touch(r){ r.updatedAt = now(); }
-
-  // New routine helpers
-  function renderNewBlockNameInputs(n){
-    const container = $('#newBlockNames');
-    if (!container) return;
-    container.innerHTML = '';
-    const defaults = ['Left Leg','Left Oblique','Right Leg','Right Oblique','Arms','Core'];
-    for(let i=0;i<n;i++){
-      const inp = document.createElement('input');
-      inp.type='text';
-      inp.placeholder = `Block ${i+1} name`;
-      inp.value = defaults[i] || `Block ${i+1}`;
-      inp.setAttribute('data-new-block-name', i);
-      container.appendChild(inp);
-    }
-  }
-  function createRoutineImmediately() {
-    const blocks = ['Left Leg','Left Oblique','Right Leg','Right Oblique','Arms','Core'].map(n=>({ id: uid(), name:n, moves:[] }));
-    const r = { id: uid(), title: `Signature routine`, category: 'Signature', tags: [], blocks, createdAt: now(), updatedAt: now() };
-    routines.unshift(r); persist(); openRoutine(r.id);
-  }
-
-  function openNewModal(){
-    const root = document.getElementById('modalRoot');
-    const panel = document.getElementById('newModal');
-    if (!root || !panel) { createRoutineImmediately(); return; }
-    const cat = document.getElementById('newCategory');
-    const count = document.getElementById('newBlockCount');
-    if (cat) cat.value = 'Signature';
-    if (count) count.value = 6;
-    renderNewBlockNameInputs(6);
-
-    root.classList.remove('hidden');
-    root.setAttribute('aria-hidden', 'false');
-    document.body.classList.add('modal-open');
-    setTimeout(() => cat?.focus(), 0);
-  }
-  function closeNewModal(){
-    const root = document.getElementById('modalRoot');
-    if (root) { root.classList.add('hidden'); root.setAttribute('aria-hidden', 'true'); }
-    document.body.classList.remove('modal-open');
-  }
-
-  // Wire UI (safe optional chaining)
-  $('#newRoutineBtn')?.addEventListener('click', openNewModal);
-  $('#emptyNewBtn')?.addEventListener('click', openNewModal);
-  $('#cancelNew')?.addEventListener('click', closeNewModal);
-  $('#modalBackdrop')?.addEventListener('click', closeNewModal);
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeNewModal(); });
-
-  $('#newBlockCount')?.addEventListener('input', e=>{
-    let n = parseInt(e.target.value||'1',10);
-    n = Math.max(1, Math.min(12, n));
-    renderNewBlockNameInputs(n);
-  });
-  $('#createNew')?.addEventListener('click', ()=>{
-    const catEl = $('#newCategory'), names = $$('input[data-new-block-name]');
-    if (!catEl || names.length===0) { createRoutineImmediately(); return; }
-    const cat = catEl.value || 'Signature';
-    const blocks = names.map(inp=> ({ id: uid(), name: (inp.value||'Block').trim(), moves: [] }));
-    const r = { id: uid(), title: `${cat} routine`, category: cat, tags: [], blocks, createdAt: now(), updatedAt: now() };
-    routines.unshift(r); persist(); closeNewModal(); openRoutine(r.id); $('#titleInput')?.focus();
-  });
-
-  $('#titleInput')?.addEventListener('input', e=>{ const r = routines.find(x=> x.id===currentId); if(r){ r.title = e.target.value; touch(r); persist(); updateTotals(r); } });
-  $('#categoryInput')?.addEventListener('change', e=>{ const r = routines.find(x=> x.id===currentId); if(r){ r.category = e.target.value; touch(r); persist(); updateTotals(r); } });
-  $('#tagsInput')?.addEventListener('input', e=>{ const r = routines.find(x=> x.id===currentId); if(r){ r.tags = e.target.value.split(',').map(s=>s.trim()).filter(Boolean); touch(r); persist(); renderList(); } });
-
-  $('#exportBtn')?.addEventListener('click', ()=>{
-    const data = JSON.stringify(routines, null, 2);
-    const blob = new Blob([data], {type:'application/json'});
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a'); a.href = url; a.download = 'lagree-routines.json'; a.click();
-    setTimeout(()=>URL.revokeObjectURL(url), 1000);
-  });
-
-  $('#search')?.addEventListener('input', renderList);
-  $('#filterCategory')?.addEventListener('change', renderList);
-  $('#sortOrder')?.addEventListener('change', renderList);
-
-  // Initial render
-  renderList();
-  if(routines.length){
-    const latest = [...routines].sort((a,b)=> (b.updatedAt||b.createdAt).localeCompare(a.updatedAt||a.createdAt))[0];
-    openRoutine(latest.id);
-  }
-});
+  <script>
+    if ('serviceWorker' in navigator) { navigator.serviceWorker.register('sw.js'); }
+  </script>
+  <!-- bump the version string when you change app.js -->
+  <script defer src="app.js?v=2025-08-14-7"></script>
+</body>
+</html>
