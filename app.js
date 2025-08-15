@@ -204,4 +204,50 @@ document.addEventListener('DOMContentLoaded', () => {
   function closeNewModal(){ const modal = $('#newModal'); if (modal) modal.style.display='none'; }
 
   function createRoutineImmediately() {
-    // Fallback: make a 6-block Signature routine instantly if the modal is
+    // Fallback: make a 6-block Signature routine instantly if the modal isn't available
+    const blocks = ['Left Leg','Left Oblique','Right Leg','Right Oblique','Arms','Core'].map(n=>({ id: uid(), name:n, moves:[] }));
+    const r = { id: uid(), title: `Signature routine`, category: 'Signature', tags: [], blocks, createdAt: now(), updatedAt: now() };
+    routines.unshift(r); persist(); openRoutine(r.id);
+  }
+
+  // Wire UI safely
+  $('#newRoutineBtn')?.addEventListener('click', openNewModal);
+  $('#emptyNewBtn')?.addEventListener('click', openNewModal);
+  $('#cancelNew')?.addEventListener('click', closeNewModal);
+  $('#newBlockCount')?.addEventListener('input', e=>{
+    let n = parseInt(e.target.value||'1',10);
+    n = Math.max(1, Math.min(12, n));
+    renderNewBlockNameInputs(n);
+  });
+  $('#createNew')?.addEventListener('click', ()=>{
+    const catEl = $('#newCategory'), names = $$('input[data-new-block-name]');
+    if (!catEl || names.length===0) { createRoutineImmediately(); return; }
+    const cat = catEl.value || 'Signature';
+    const blocks = names.map(inp=> ({ id: uid(), name: (inp.value||'Block').trim(), moves: [] }));
+    const r = { id: uid(), title: `${cat} routine`, category: cat, tags: [], blocks, createdAt: now(), updatedAt: now() };
+    routines.unshift(r); persist(); closeNewModal(); openRoutine(r.id); $('#titleInput')?.focus();
+  });
+
+  $('#titleInput')?.addEventListener('input', e=>{ const r = routines.find(x=> x.id===currentId); if(r){ r.title = e.target.value; touch(r); persist(); updateTotals(r); } });
+  $('#categoryInput')?.addEventListener('change', e=>{ const r = routines.find(x=> x.id===currentId); if(r){ r.category = e.target.value; touch(r); persist(); updateTotals(r); } });
+  $('#tagsInput')?.addEventListener('input', e=>{ const r = routines.find(x=> x.id===currentId); if(r){ r.tags = e.target.value.split(',').map(s=>s.trim()).filter(Boolean); touch(r); persist(); renderList(); } });
+
+  $('#exportBtn')?.addEventListener('click', ()=>{
+    const data = JSON.stringify(routines, null, 2);
+    const blob = new Blob([data], {type:'application/json'});
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a'); a.href = url; a.download = 'lagree-routines.json'; a.click();
+    setTimeout(()=>URL.revokeObjectURL(url), 1000);
+  });
+
+  $('#search')?.addEventListener('input', renderList);
+  $('#filterCategory')?.addEventListener('change', renderList);
+  $('#sortOrder')?.addEventListener('change', renderList);
+
+  // Initial render
+  renderList();
+  if(routines.length){
+    const latest = [...routines].sort((a,b)=> (b.updatedAt||b.createdAt).localeCompare(a.updatedAt||a.createdAt))[0];
+    openRoutine(latest.id);
+  }
+});
