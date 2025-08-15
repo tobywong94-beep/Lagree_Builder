@@ -193,15 +193,29 @@ document.addEventListener('DOMContentLoaded', () => {
       container.appendChild(inp);
     }
   }
-  function openNewModal(){
-    const modal = $('#newModal');
-    if (!modal) { createRoutineImmediately(); return; }  // fallback
-    $('#newCategory').value='Signature';
-    $('#newBlockCount').value=6;
-    renderNewBlockNameInputs(6);
-    modal.style.display='block';
-  }
-  function closeNewModal(){ const modal = $('#newModal'); if (modal) modal.style.display='none'; }
+function openNewModal(){
+  const modal = document.getElementById('newModal');
+  const backdrop = document.getElementById('modalBackdrop');
+  if (!modal) { createRoutineImmediately(); return; }  // fallback
+
+  document.getElementById('newCategory').value = 'Signature';
+  const countEl = document.getElementById('newBlockCount');
+  if (countEl) countEl.value = 6;
+  renderNewBlockNameInputs(6);
+
+  modal.style.display = 'block';
+  if (backdrop) backdrop.style.display = 'block';
+  document.body.classList.add('modal-open');   // lock scroll
+}
+
+function closeNewModal(){
+  const modal = document.getElementById('newModal');
+  const backdrop = document.getElementById('modalBackdrop');
+  if (modal) modal.style.display = 'none';
+  if (backdrop) backdrop.style.display = 'none';
+  document.body.classList.remove('modal-open'); // unlock scroll
+}
+
 
   function createRoutineImmediately() {
     // Fallback: make a 6-block Signature routine instantly if the modal isn't available
