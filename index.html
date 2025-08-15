@@ -24,6 +24,28 @@
     input, select, textarea { width:100%; min-height:44px; padding:12px; border-radius:10px; border:1px solid #1f2630; background:#0f1319; color:#e6edf3; }
     .panel { background:#12161c; border:1px solid #1f2630; border-radius:12px; padding:12px; }
     @media (min-width: 900px) { .app { grid-template-columns: 320px 1fr; } .sidebar{ height:100vh; border-right:1px solid #1f2630; border-bottom:0; } }
+    /* Modal should sit above the sticky sidebar */
+#newModal {
+  z-index: 9999;              /* on top of everything */
+  max-height: 90vh;           /* scroll inside modal if tall */
+  overflow: auto;
+}
+
+/* Dimmed backdrop behind the modal */
+#modalBackdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.5);
+  display: none;              /* toggled via JS */
+  z-index: 9998;              /* just under the modal */
+}
+
+/* When modal is open, prevent page scroll on iOS */
+body.modal-open {
+  overflow: hidden;
+  height: 100%;
+}
+
   </style>
 </head>
 <body>
@@ -92,9 +114,12 @@
         <button class="btn secondary" id="cancelNew">Cancel</button>
         <button class="btn" id="createNew">Create</button>
       </div>
+      <div id="modalBackdrop"></div>
     </div>
   </div>
 
+
+  
   <script>
     if ('serviceWorker' in navigator) { navigator.serviceWorker.register('sw.js'); }
   </script>
